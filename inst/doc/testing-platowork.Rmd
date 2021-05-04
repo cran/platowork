@@ -1,0 +1,252 @@
+---
+title: "Testing the PlatoWork Headset"
+output: rmarkdown::html_vignette
+author: Lasse Hjorth Madsen
+date: "`r format(Sys.time(), '%Y %B %d')`"
+vignette: >
+  %\VignetteIndexEntry{Testing the PlatoWork Headset}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  echo = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+# Introduction
+
+One promising technology for improving cognitive ability in healthy humans is Transcranial Direct Current Stimulation (tDCS). Many devices that implement that technique, are available for purchase.
+
+My son and I did an informal test of one such device, the tDCS headset from [PlatoScience](https://www.platoscience.com/). As a learning task, we used the speed typing test available from [10fastfingers.com](https://10fastfingers.com/). We did a number of test sessions each, usually one per day, with between 4 and 12 tests per session. Each session was performed with either:
+
+  - No headset (for some initial benchmark test)
+  - Headset with sham stimulus (i.e. placebo)
+  - Headset with real stimulus
+
+Sham stimulus and real stimulus refers to either a placebo or an actual direct current stimulation. During testing those were labeled as A and B; only after the test we learned which was which. This functionality was available from a research version of the PlatoWork app.
+
+# R Package    
+The R package `platowork` provides a small data set with the results of our experiments. It also includes the vignette you are reading now, with some examples of how the data can be analyzed.
+
+The R package is available from GitHub here: [https://github.com/lassehjorthmadsen/platowork](https://github.com/lassehjorthmadsen/platowork). It can be installed directly from Github with `devtools::install_github("https://github.com/lassehjorthmadsen/platowork", build_vignettes = T)`.
+
+The purpose of the package is to make the data available to those interested. It may be useful as an example data set to teach, practice, or demo basic statistical techniques and visualizations. (See below.)
+
+The data and analysis may also be interesting to those who have experiences with tDCS themselves.
+
+This vignette can be read from R Studio using: `vignette("testing-platowork")` or accessed directly at [https://rpubs.com/lassehjorthmadsen/764374](https://rpubs.com/lassehjorthmadsen/764374).
+
+# Data    
+
+In R, the data set is stored as `plato`. In the R Studio console, type `?plato` to read a description of the data set, or simply type `head(plato)` to see the first few rows:
+
+```{r peek, echo=TRUE}
+library(platowork)
+head(plato)
+```
+
+Each row represents the result of a speed typing test. Each test has a date/time stamp; a subject (the person doing the test); a wpm (words per minute) performance score; an error rate; a stimulus ("None", "Sham" or "Real", were "Sham" is a placebo-like stimulus). Finally, since each test was taken several times in a row, we also have a session id. 
+
+Below is a quick summary of the data, with a duration in minutes calculated for the sessions:
+
+```{r data}
+library(ggplot2)
+library(dplyr)
+theme_set(theme_minimal())
+
+plato %>%
+  group_by(subject, session) %>% 
+  mutate(first_test = min(date),
+         last_test = max(date),
+         session_duration = difftime(last_test, first_test, units = "mins")) %>% 
+  group_by(subject, stimulus) %>%
+  summarise(no_tests = n(),
+            no_sessions = n_distinct(session),
+            first_test = min(first_test), 
+            avr_session_duration = round(sum(session_duration) / sum(no_tests), 1)) %>%
+  ungroup() %>% 
+  arrange(subject, first_test)
+```
+
+# Visualizing the data
+
+The chart below plots all `r nrow(plato)` data points in the data set. Each dot represents the result of one speed typing test measures in words-per-minute on the y-axis. The x-axis shows the session ids. Vertical bars show the average for each session. The plot is split by the two test subjects: Lasse and Villads. 
+
+```{r plot1}
+data_summary <- plato %>% 
+  group_by(subject, session, stimulus) %>% 
+  summarise(wpm = mean(wpm),
+            date = mean(date),
+            .groups = "drop")
+
+plato %>% 
+  ggplot(aes(x = session, y = wpm, color = stimulus)) +
+  geom_jitter(size = 1.0, width = 0.15, height = 0, show.legend = T) +
+  geom_crossbar(data = data_summary, aes(ymin = wpm, ymax = wpm), show.legend = F) +
+  scale_x_continuous(breaks = 1:13) +
+  facet_grid(rows = vars(subject)) +
+  labs(title = "Performance in speed typing tests with or without tDCS stimulus",
+       subtitle = "Each dot represent one speed typing test. Horizontal bars are average results for each session",
+       caption = "Two subjects, double blind experiment with unknown stimulus\nSpeed typing tests performed at 10fastfingers.com. Analysis by @lassehmadsen",
+       x = "Session number", 
+       y = "wpm, words-per-minute",
+       color = "Stimulus") +
+  theme(strip.background = element_rect(fill = grey(0.93), linetype = "blank"),
+        legend.justification = c(1, 0),
+        legend.position = c(1, 0))
+```
+
+By visual inspection alone, it is apparent that one subject (Villads) *perhaps* experienced enhanced learning from using the headset with real stimuli. The same cannot be said for Lasse: For me the green dots (real stimuli) were not higher on average than the blue dots (sham stimuli).
+
+Another way to look at the data is to inspect the estimated density plots, while adding the overall averages for each subject/stimulus combination. See below:
+
+```{r plot2}
+data_summary <- plato %>% 
+  #filter(stimulus != "None") %>% 
+  group_by(subject, stimulus) %>% 
+  summarise(wpm = mean(wpm), .groups = "drop")
+
+plato %>% 
+  #filter(stimulus != "None") %>% 
+  ggplot(aes(x = wpm, color = stimulus, fill = stimulus)) +
+  geom_density(alpha = 0.4, show.legend = c("color" = FALSE, "fill" = TRUE)) +
+  geom_vline(data = data_summary, aes(xintercept = wpm, color = stimulus), show.legend = FALSE) +
+  facet_grid(rows = vars(subject)) +
+  labs(title = "Performance in speed typing tests with or without tDCS stimulus",
+       subtitle = "Density distributions. Vertical lines are the averages for each subject/stimulus",
+       caption = "Two subjects, double blind experiment with unknown stimulus\nSpeed typing tests performed at 10fastfingers.com. Analysis by @lassehmadsen",
+       x = "wpm, words-per-minute", 
+       y = "density",
+       fill = "Stimulus") +
+  theme(strip.background = element_rect(fill = grey(0.93), linetype = "blank"),
+        legend.justification = c(1, 1),
+        legend.position = c(1, 1))
+```
+
+For me, the typing speed was very slightly *lower* using real stimuli; Villads had a somewhat higher average typing speed under real stimulation. Villads improved from about `r data_summary %>% filter(subject == "Villads", stimulus == "Sham") %>% pull(wpm) %>% round(0)` words per minute to about `r data_summary %>% filter(subject == "Villads", stimulus == "Real") %>% pull(wpm) %>% round(0)` words per minute. A small but possibly real improvement.
+
+Both of us did worse in the initial base mark trials, suggesting that some learning was going on during the experiment.
+
+# Statistical test
+
+While we do get a visual impression from the charts above, we might want to do a more formal statistical test to find out if the results indicate that it made a difference which stimulus we were exposed to while speed typing.
+
+A simple and natural choice of test might be an analysis of variance,  [ANOVA](https://en.wikipedia.org/wiki/Analysis_of_variance).
+
+```{r anova1, echo=TRUE}
+m <- aov(wpm ~ stimulus, data = plato)
+summary(m)
+```
+
+With a P-value of `r summary(m)[[1]][["Pr(>F)"]][[1]] %>% round(2)`, it looks like these results would be somewhat unlikely if all typing test results were drawn from the same distribution.
+
+However, we might want to filter the data to disregard the initial test done without headset, that is not really part of the relevant comparison. While we are at it, we also do a bit of data wrangling that will be useful later on:
+
+```{r wrangling, echo=TRUE}
+# 1) Standardize wpm;
+# 2) Filter out no stimulus;
+# 3) Set factor levels for later plotting.
+
+data <- plato %>% 
+  group_by(subject) %>% 
+  mutate(wpm_stand = (wpm - mean(wpm)) / sd(wpm)) %>% 
+  ungroup() %>% 
+  filter(stimulus != "None") %>%
+  mutate(stimulus = factor(stimulus, levels = c("Sham", "Real")))
+```
+
+The same model, applied to the slightly reduced dataset look like this:
+
+```{r anova2, echo=TRUE}
+m <- aov(wpm ~ stimulus, data = data)
+summary(m)
+```
+With a P-value of `r summary(m)[[1]][["Pr(>F)"]][[1]] %>% round(2)` indicating no detectable effect of the headset.
+
+This is because I got slightly better results on average with sham stimuli, while my son got better results with real stimuli. 
+
+But the fact that we type at different speeds, also inflates the within-group variance at the ANOVA test above. In other words: The dependent variable, wpm, looks extra volatile, since we are looking at results from two different subjects. We could try to correct for that by standardizing the data, by subtracting the mean and dividing by the standard deviations, for each subject. (This is why we needed the `wpm_stand` variable calculated just before.)
+
+Standardizing enables us to build a model that focuses on individual *improvements* from individual *averages*:
+
+```{r anova3, echo=TRUE}
+m <- aov(wpm_stand ~ stimulus, data = data)
+summary(m)
+```
+
+As expected, this yields a lower p-value, `r summary(m)[[1]][["Pr(>F)"]][[1]] %>% round(2)`, but still not exactly convincing evidence of improved typing speed when using the headset.
+
+It is possible, that the headset works for one but not for the other. Indeed, that is the impression one can get from the first two charts. We might want to capture this by including subject in the analysis as interaction, so the effect of the stimulus *depends* on the subject:
+
+```{r anova4, echo=TRUE}
+m <- aov(wpm_stand ~ stimulus * subject, data)
+summary(m)
+```
+
+One way to interpret this output is that there is little evidence that the stimulus works overall, but some evidence that the headset might help my son more than me. An equally plausible interpretation might be, that my son just *learns* faster or better than me, headset or not. 
+
+We could try to focus on the *learning* that goes on by looking at the *slopes* of learning curves over time:
+
+```{r plot3}
+data %>% 
+  ggplot(aes(x = session, y = wpm_stand, color = stimulus)) +
+  geom_jitter(size = 1.0, width = 0.15, height = 0, show.legend = F) +
+  geom_smooth(method = "lm", show.legend = F) +
+  scale_x_continuous(breaks = 1:13) +
+  facet_grid(rows = vars(subject), cols = vars(stimulus), scales = "free_x") +
+  labs(title = "Performance in speed typing tests with or without tDCS stimulus",
+       subtitle = "Words-per-minute plotted by session number. Slope of linear fit indicates learning rate",
+       caption = "Two subjects, double blind experiment with unknown stimulus\nSpeed typing tests performed at 10fastfingers.com. Analysis by @lassehmadsen",
+       x = "Session number", 
+       y = "wpm, words-per-minute, standardized",
+       fill = "Stimulus") +
+  theme(strip.background = element_rect(fill = grey(0.93), linetype = "blank"),
+        legend.justification = c(1, 0),
+        legend.position = c(1, 0))
+```
+
+Looking at the information this way, we see more clearly that I learned faster while exposed to sham stimuli; my son learned faster at the last part of the experiment, while exposed to real stimuli.
+
+We could try to test this impression using linear regression, with three-way interaction between session number, stimulus, and subject, in effect producing a model that allows for four different slopes:
+
+```{r regression, echo=TRUE}
+m <- lm(wpm_stand ~ session * stimulus * subject, data = data)
+summary(m)
+```
+
+This model takes into account both learning over time, use of headset, and individual differences on how we react to both of those.
+
+It is not easy to interpret, however, since each term only has meaning taking the other bits into consideration.
+
+If we want something more readily interpretable, we might fit a linear model for each of the four combinations: 2 subjects x 2 stimuli. This is not efficient for estimation (we estimate more parameters that we need to), but it is simpler to interpret. Using the `purrr` package, it is easy to split the dataset, apply a model to each part, and pull out the part we want; here the slope of session parameter with corresponding p-value: 
+
+```{r split_combine, echo=TRUE}
+library(purrr) # For map function
+
+data %>%
+  split(list(.$stimulus, .$subject)) %>%
+  map(~ lm(wpm_stand ~ session, data = .)) %>%
+  map(summary) %>%
+  map("coefficients") %>% 
+  map(as_tibble, rownames = "parameter") %>% 
+  bind_rows(.id = "model") %>% 
+  filter(parameter == "session") %>% 
+  select(model, parameter, slope = Estimate, p_value = `Pr(>|t|)`) %>% 
+  mutate(across(where(is.numeric), round, 3))
+```
+
+We basically see the same information as in the previous plot, but expressed numerically rather that graphically: For me, the headset did not work, for my son it might have.
+
+# Conclusion
+
+This is, of course, a tiny, informal, private experiment, that does not say a whole lot about how the headset might work on a wider population, doing something different than speed typing.
+
+For the two of us taken together, we could not measure a clear gain from using the tDCS headset when speed typing. It is possible that for Villads the headset induced an improvement in learning speed, but that could also be unrelated to the headset.
+
+Subjectively, neither of us experienced a clear sense of enhanced learning while using the headset.
